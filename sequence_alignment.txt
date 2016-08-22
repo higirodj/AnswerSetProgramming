@@ -1,0 +1,351 @@
+% SEQUENCE 1: ACGTG*CTG
+% SEQUENCE 2: AGGTCTCAC
+%
+%	1	2	3	4	5	6	7	8	9	10	11  
+%1	C1	C2	A 	G 	G 	T	C	T	C	A	C
+%2	R2	0	-2	-4	-6	-8	-10	-12	-14	-16	-18
+%3	A	-2	3,3	3,4	3,5	3,6	3,7	3,8	3,9	3,10	3,11 
+%4	C	-4	4,3	4,4	4,5	4,6	4,7	4,8	4,9	4,10	4,10
+%5	G	-6	5,3	5,4	5,5	5,6	5,7	5,8	5,9	5,10	5,11	
+%6	T	-8	6,3	6,4	6,5	6,6	6,7	6,8	6,9	6,10	6,11
+%7	G	-10	7,3	7,4	7,5	7,6	7,7	7,8	7,9	7,10	7,11
+%8	*	-12	8,3	8,4	8,5	8,6	8,7	8,8	8,9	8,10	8,11
+%9	C	-14	9,3	9,4	9,5	9,6	9,7	9,8	9,9	9,10	9,11
+%10	T	-16	10,3	10,4	10,5	10,6	10,7	10,8	10,9	10,10	10,11
+%11	G	-18	11,3	11,4	11,5	11,6	11,7	11,8	11,9	11,10	11,11
+
+%% ----------------------------------------------------------------------
+%% TIMESTEPS
+%% ----------------------------------------------------------------------
+
+#const n = 81.
+step(0..n).
+
+next(I, I1) :- step(I), step(I1), I1 = I+1.
+
+% -------------------------------
+% OBJECTS AND THEIR TYPES
+% -------------------------------
+
+row(1..11).
+col(1..11).
+
+score(-36..36).
+value(-2..-18).
+
+nucleotide(a).
+nucleotide(c).
+nucleotide(t).
+nucleotide(g).
+nucleotide(“*”).
+nucleotide(r2).
+nucleotide(c2).
+
+max(A, B, C, A) :- A >= B, A >= C, score(A), score(B), score(C).
+max(B, A, C, B) :- B >= A, B >= C, score(A), score(B), score(C).
+max(C, A, B, C) :- C >= A, C >= B, score(A), score(B), score(C).
+
+% -------------------------------
+% PROPERTIES OF THE DOMAIN
+% -------------------------------
+%
+% An alignment score is assigned to row X and col Y.
+fluent(inertial, alignment_score(X,Y,S)) :- row(X), col(Y), score(S).
+
+% -------------------------------
+% ACTIONS
+% -------------------------------
+% 
+% update row X and col Y with the value S
+action(update(X,Y,S)) :-row(X), col(Y), score(S).
+
+% -------------------------------
+% AXIOMS
+% -------------------------------
+%DIRECT EFFECTS OF ACTIONS -- DYNAMIC CAUSAL LAWS:
+% An alignment score is assigned to row X and col Y.
+holds(alignment_score(X,Y,S),I1) :- occurs(update(X,Y,S),I),
+				      X>2, Y>2,
+                                    I < n,
+                                    next(I, I1).
+
+%INDIRECT EFFECTS — STATE CONSTRAINTS:
+% Matching nucleotide score = +1
+% Non-matching nucleotide score = -1
+% Gapped nucleotide score = -2
+%
+% A value is assigned to row X and col Y based on the comparison of the nucleotides at that position.
+% The value assigned is MAX{ [value of (i-1,j) + score], [value of (i,j-1) + score], [value of (i-1,j-1) +score] }
+% 
+% This case considers the events where the nucleotide in sequence 1
+% is the same as the nucleotide in sequence 2 in the first row.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X,Y-1,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X-1,Y),
+                         num_pos(V2,X-1,Y-1),
+                         X=3, Y>3,
+                         Z = W, 
+                         R1 = S1+1, 
+                         R2 = V1+1, 
+                         R3 = V2+1,
+                         S = MAX(R1, R2, R3, R1).
+
+% This case considers the events where the nucleotide in sequence 1 is different
+% than the nucleotide in sequence 2 in the first row.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X,Y-1,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X-1,Y),
+                         num_pos(V2,X-1,Y-1),            
+                         X=3, Y>3,
+                         Z != W, 
+                         Z != “*”, 
+                         R1 = S1-1, 
+                         R2 = V1-1, 
+                         R3 = V2-1,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1 is gapped in the first row.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X,Y-1,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X-1,Y),
+                         num_pos(V2,X-1,Y-1),
+                         X=3, Y>3,
+                         Z = “*”, 
+                         R1 = S1-2, 
+                         R2 = V1-2, 
+                         R3 = V2-2,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 2 is gapped in the first row.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X,Y-1,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X-1,Y),
+                         num_pos(V2,X-1,Y-1),
+                         X=3, Y>3,
+                         W = “*”, 
+                         R1 = S1-2, 
+                         R2 = V1-2, 
+                         R3 = V2-2,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1
+% is the same as the nucleotide in sequence 2 in the first column.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X,Y-1),
+                         num_pos(V2,X-1,Y-1),
+                         X>3, Y=3,
+                         Z = W, 
+                         R1 = S1+1, 
+                         R2 = V1+1, 
+                         R3 = V2+1, 
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1
+% is different than the nucleotide in sequence 2 in the first column.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X-1,Y),
+                         num_pos(V2,X-1,Y-1),
+                         X>3, Y=3,
+                         Z != W, 
+                         Z != “*”, 
+                         R1 = S1-1, 
+                         R2 = V1-1, 
+                         R3 = V2-1, score(S),
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1 is gapped in the first column.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X,Y-1),
+                         num_pos(V2,X-1,Y-1),
+                         X>3, Y=3,
+                         Z = “*”, 
+                         R1 = S1-2, 
+                         R2 = V1-2, 
+                         R3 = V2-2,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 2 is gapped in the first column.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         num_pos(V1,X,Y-1),
+                         num_pos(V2,X-1,Y-1),
+                         X>3, Y=3,
+                         W = “*”, 
+                         R1 = S1-2, 
+                         R2 = V1-2, 
+                         R3 = V2-2, score(S),
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1
+% is the same as the nucleotide in sequence 2 for remaining coordinates.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         holds(alignment_score(X,Y-1,S2),I),
+                         holds(alignment_score(X-1,Y-1,S3),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         X>3, Y>3,
+                         Z = W, 
+                         R1 = S1+1, 
+                         R2 = S2+1, 
+                         R3 = S3+1,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1 is gapped for remaining coordinates.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         holds(alignment_score(X,Y-1,S2),I),
+                         holds(alignment_score(X-1,Y-1,S3),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         X>3, Y>3,
+                         Z = “*”, 
+                         R1 = S1-2, 
+                         R2 = S2-2, 
+                         R3 = S3-2,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 2 is gapped for remaining coordinates.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         holds(alignment_score(X,Y-1,S2),I),
+                         holds(alignment_score(X-1,Y-1,S3),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         X>3, Y>3,
+                         W = “*”, 
+                         R1 = S1-2, 
+                         R2 = S2-2, 
+                         R3 = S3-2,
+                         S = MAX{R1, R2, R3}.
+
+% This case considers the events where the nucleotide in sequence 1
+% is different than the nucleotide in sequence 2 for remaining coordinates.
+holds(alignment_score(X,Y,S),I) :- holds(alignment_score(X-1,Y,S1),I),
+                         holds(alignment_score(X,Y-1,S2),I),
+                         holds(alignment_score(X-1,Y-1,S3),I),
+                         nucleotide_pos(Z,X,1),
+                         nucleotide_pos(W,1,Y),
+                         X>3, Y>3,
+                         Z != “*”,
+                         Z!= W, 
+                         R1 = S1-1,
+                         R2 = S2-1, 
+                         R3 = S3-1,
+                         S = MAX{R1, R2, R3}.
+
+% -------------------------------
+% CONDITIONS ON THE EXECUTION OF ACTIONS
+% -------------------------------
+% Don’t update a position at row X and Y with X and Y values that are less than 3.
+:- occurs(update(X,Y,S),I), X<3, Y<3, step(I).
+
+% Don’t update a position X,Y more than once.
+:- occurs(update(X,Y,S),I1), occurs(update(X,Y,S),I), X=X, Y=Y, I < n, next(I, I1).
+
+% Must update each i,j, one row at a time in order to ensure the surrounding values (before & above) have been updated.
+% i.e. value in [value of (i-1,j) + score], [value of (i,j-1) + score], [value of (i-1,j-1) +score] is correct.
+-occurs(update(X,Y,S),I):- holds(alignment_score(X1,Y1,S1),I), X1=X, Y1=Y-1,
+                           holds(alignment_score(X2,Y2,S2),I), X2=X-1, Y2=Y, X!=3, Y!=3. 
+
+% ---------------------------------------
+% INERTIA AXIOMS FOR INERTIAL FLUENTS
+% ---------------------------------------
+
+holds(F,I1) :- fluent(inertial,F),
+               holds(F,I),                  
+               not -holds(F,I1),
+               I < n,
+               next(I, I1).
+
+-holds(F,I1) :- fluent(inertial,F),
+		-holds(F,I),                
+                not holds(F,I1),
+                I < n,
+                next(I, I1).
+
+% ------------------------------
+% MATRIX CONSTANTS
+% ------------------------------
+
+% coordinates X and Y are the values of X and the values of Y                          
+coordinates(X,Y) :- row(X), col(Y).
+
+
+% At location X and Y, there is a nucleotide Z
+nucleotide_pos(Z,X,Y) :- coordinates(X,Y), nucleotide(Z).
+
+% At location X and Y, there is a constant value V
+num_pos(V,X,Y) :- value(V), coordinates(X,Y).                         
+
+% --------------------------------------
+% A POSSIBLE INPUT FOR THE PROGRAM 
+% SEQUENCE 1: ACGTG*CTG
+% --------------------------------------
+nucleotide_pos(a,3,1).
+nucleotide_pos(c,4,1).
+nucleotide_pos(g,5,1).
+nucleotide_pos(t,6,1).
+nucleotide_pos(g,7,1).
+nucleotide_pos(“*”,8,1).
+nucleotide_pos(c,9,1).
+nucleotide_pos(t,10,1).
+nucleotide_pos(g,11,1).
+
+% ---------------------------------------
+% A POSSIBLE INPUT FOR THE PROGRAM 
+% SEQUENCE 2: AGGTCTCAC
+% ---------------------------------------
+nucleotide_pos(a,1,3).
+nucleotide_pos(g,1,4).
+nucleotide_pos(g,1,5).
+nucleotide_pos(t,1,6).
+nucleotide_pos(c,1,7).
+nucleotide_pos(t,1,8).
+nucleotide_pos(c,1,9).
+nucleotide_pos(a,1,10).
+nucleotide_pos(c,1,11).
+
+nucleotide_pos(r2,2,1).
+nucleotide_pos(c2,1,2).
+
+num_pos(-2,2,3).
+num_pos(-4,2,4). 	
+num_pos(-6,2,5). 
+num_pos(-8,2,6).
+num_pos(-10,2,7).
+num_pos(-12,2,8).
+num_pos(-14,2,9).
+num_pos(-16,2,10).
+num_pos(-18,2,11).
+
+num_pos(0,2,2).
+num_pos(-2,3,2).
+num_pos(-4,4,2).
+num_pos(-6,5,2).
+num_pos(-8,6,2).
+num_pos(-10,7,2).
+num_pos(-12,8,2).
+num_pos(-14,9,2).
+num_pos(-16,10,2).
+num_pos(-18,11,2).
+
+
+% ===============================
+% SPECIFIC SCENARIO
+% ===============================
+
+occurs(update(3,3,1),0).
+ 
+% ===============================
+% QUERIES
+% ===============================
+holds(alignment_score(X,Y,S),80) ?
